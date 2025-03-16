@@ -2421,6 +2421,24 @@ function handleTouchStart(e) {
     touchStartX = (touch.clientX - canvasRect.left) * scaleX;
     
     isTouching = true;
+    
+    // Determine movement based on which side of the canvas was touched
+    const canvasMidPoint = canvas.width / 2;
+    
+    // Reset player movement first
+    player.isMovingLeft = false;
+    player.isMovingRight = false;
+    
+    // If touch is on left half of canvas, move left
+    if (touchStartX < canvasMidPoint) {
+        player.isMovingLeft = true;
+        player.isMovingRight = false;
+    } 
+    // If touch is on right half of canvas, move right
+    else {
+        player.isMovingRight = true;
+        player.isMovingLeft = false;
+    }
 }
 
 // Handle touch move
@@ -2433,24 +2451,23 @@ function handleTouchMove(e) {
     const canvasRect = canvas.getBoundingClientRect();
     const scaleX = canvas.width / canvasRect.width;
     const touchCurrentX = (touch.clientX - canvasRect.left) * scaleX;
-    const touchDeltaX = touchCurrentX - touchStartX;
+    
+    // Determine movement based on current touch position
+    const canvasMidPoint = canvas.width / 2;
     
     // Reset player movement first
     player.isMovingLeft = false;
     player.isMovingRight = false;
     
-    // Determine direction based on touch delta
-    if (touchDeltaX < -touchThreshold) {
-        // Moving left
+    // If touch is on left half of canvas, move left
+    if (touchCurrentX < canvasMidPoint) {
         player.isMovingLeft = true;
-    } else if (touchDeltaX > touchThreshold) {
-        // Moving right
+        player.isMovingRight = false;
+    } 
+    // If touch is on right half of canvas, move right
+    else {
         player.isMovingRight = true;
-    }
-    
-    // Update touch start position for continuous movement
-    if (Math.abs(touchDeltaX) > touchThreshold * 2) {
-        touchStartX = touchCurrentX;
+        player.isMovingLeft = false;
     }
 }
 
