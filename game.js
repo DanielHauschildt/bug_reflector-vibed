@@ -27,6 +27,7 @@ let recordingStream = null;
 let recordingBufferSize = 60; // Size of the recording buffer in seconds
 let recordingTimeStart = 0;
 let lastRecordingBlob = null; // Store the last completed recording
+let autoRecordingEnabled = false; // Flag to control auto recording, disabled by default
 
 // Audio system variables
 let audioContext = null;
@@ -169,6 +170,7 @@ window.onload = function() {
     
     // Add recording event listener
     document.getElementById('downloadRecordingBtn').addEventListener('click', downloadRecording);
+    document.getElementById('toggleRecordingBtn').addEventListener('click', toggleRecording);
 
     // Log SVG support for debugging
     console.log("SVG MIME type support:", document.implementation.hasFeature("http://www.w3.org/TR/SVG11/feature#Image", "1.1"));
@@ -179,8 +181,10 @@ window.onload = function() {
     // Initialize chat
     initializeChat();
     
-    // Initialize always-on recording
-    startContinuousRecording();
+    // Initialize recording if enabled
+    if (autoRecordingEnabled) {
+        startContinuousRecording();
+    }
 }
 
 // Initialize sound effects
@@ -994,11 +998,13 @@ function startGame() {
         requestAnimationFrame(gameLoop);
     }
     
-    // Stop any existing recording and start a new one
+    // Stop any existing recording and start a new one if auto recording is enabled
     if (isRecording) {
         stopRecording(false); // Stop without downloading
     }
-    startContinuousRecording();
+    if (autoRecordingEnabled) {
+        startContinuousRecording();
+    }
     
     startRandomChat();
 }
@@ -2227,5 +2233,26 @@ function updateMovementTracking() {
         console.log('Applied motion blur for high-movement scene');
     } else if (ctx) {
         ctx.filter = 'none';
+    }
+}
+
+// Toggle recording on/off
+function toggleRecording() {
+    autoRecordingEnabled = !autoRecordingEnabled;
+    
+    if (autoRecordingEnabled) {
+        // Start recording if it wasn't already recording
+        if (!isRecording) {
+            startContinuousRecording();
+        }
+        document.getElementById('toggleRecordingBtn').textContent = 'Disable Recording';
+        document.getElementById('toggleRecordingBtn').classList.add('recording');
+    } else {
+        // Stop recording if it was recording
+        if (isRecording) {
+            stopRecording(false); // Stop without downloading
+        }
+        document.getElementById('toggleRecordingBtn').textContent = 'Enable Recording';
+        document.getElementById('toggleRecordingBtn').classList.remove('recording');
     }
 }
