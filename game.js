@@ -80,6 +80,7 @@ let score = 0;
 let highScore = 0;
 let gameRunning = false;
 let gameOver = false;
+let gamePaused = false; // Added variable to track pause state
 let gameOverStartTime = 0;
 let gameOverEffectsActive = false;
 let gameOverRecordingStopped = false;
@@ -746,8 +747,8 @@ function startGameWithCharacter() {
 
 // Game loop
 function gameLoop() {
-    // Always update and draw, but only update game logic if game is running
-    if (gameRunning) {
+    // Always update and draw, but only update game logic if game is running and not paused
+    if (gameRunning && !gamePaused) {
         update();
     } else if (gameOver) {
         // For game over state, we still need to update animations
@@ -755,7 +756,7 @@ function gameLoop() {
         update(); // This will handle particles and any animation updates
     }
     
-    // Always draw the game (including game over screen)
+    // Always draw the game (including game over and pause screens)
     drawGame();
     
     // Continue animation loop regardless of game state
@@ -947,6 +948,11 @@ function drawGame() {
         drawGameOverScreen();
     }
     
+    // Draw pause screen if game is paused
+    if (gamePaused && !gameOver) {
+        drawPauseScreen();
+    }
+    
     // Draw scoreboards and stats on canvas
     drawScoreboardOnCanvas();
     
@@ -1061,17 +1067,27 @@ function drawFallbackBall() {
 
 // Handle keyboard input
 function handleKeyDown(e) {
-    // Move the player
-    if (e.code === 'ArrowLeft' || e.key === 'A' || e.key === 'a') {
-        player.isMovingLeft = true;
-    }
-    if (e.code === 'ArrowRight' || e.key === 'D' || e.key === 'd') {
-        player.isMovingRight = true;
-    }
-    
     // If game is over and Space is pressed, restart the game
     if (gameOver && (e.code === 'Space' || e.key === ' ')) {
         startGameWithCharacter();
+        return;
+    }
+    
+    // Toggle pause with space when game is running (and not over)
+    if (gameRunning && !gameOver && (e.code === 'Space' || e.key === ' ')) {
+        togglePause();
+        return;
+    }
+    
+    // Only process movement if the game is running and not paused
+    if (gameRunning && !gamePaused) {
+        // Move the player
+        if (e.code === 'ArrowLeft' || e.key === 'A' || e.key === 'a') {
+            player.isMovingLeft = true;
+        }
+        if (e.code === 'ArrowRight' || e.key === 'D' || e.key === 'd') {
+            player.isMovingRight = true;
+        }
     }
     
     // Toggle sound with 'S' key
@@ -1139,6 +1155,7 @@ function startGame() {
     score = 0;
     gameRunning = true;
     gameOver = false;
+    gamePaused = false; // Ensure the game starts in an unpaused state
     gameOverEffectsActive = false;
     gameOverRecordingStopped = false;
 
@@ -2454,6 +2471,15 @@ function handleTouchStart(e) {
         });
     }
     
+    // If the game is paused, toggle pause on any touch
+    if (gameRunning && !gameOver && gamePaused) {
+        togglePause();
+        return;
+    }
+    
+    // Only process movement if game is running and not paused
+    if (!gameRunning || gameOver || gamePaused) return;
+    
     const touch = e.touches[0];
     // Convert touch position to canvas coordinates
     const canvasRect = canvas.getBoundingClientRect();
@@ -2483,7 +2509,9 @@ function handleTouchStart(e) {
 
 // Handle touch move
 function handleTouchMove(e) {
-    if (!isTouching) return;
+    // Only process movement if game is running and not paused
+    if (!gameRunning || gameOver || gamePaused || !isTouching) return;
+    
     e.preventDefault();
     
     const touch = e.touches[0];
@@ -2650,4 +2678,43 @@ function handleFullscreenChange() {
     
     // Update canvas size
     handleCanvasResize();
+}
+
+// Draw pause screen
+function drawPauseScreen() {
+    // Semi-transparent overlay
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    
+    // "PAUSED" text
+    ctx.save();
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '32px "Press Start 2P", monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('PAUSED', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 30);
+    
+    // Instructions text
+    ctx.font = '16px "Press Start 2P", monospace';
+    ctx.fillText('Press SPACE to resume', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 30);
+    
+    // Add touch instructions for mobile
+    ctx.font = '14px "Press Start 2P", monospace';
+    ctx.fillText('or Touch Screen', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 60);
+    
+    ctx.restore();
+}
+
+// Toggle pause state
+function togglePause() {
+    gamePaused = !gamePaused;
+    
+    // If we're unpausing, make sure the player movement state is reset
+    // to prevent the player from continuing to move if keys were held while paused
+    if (!gamePaused) {
+        player.isMovingLeft = false;
+        player.isMovingRight = false;
+    }
+    
+    console.log('Game ' + (gamePaused ? 'paused' : 'resumed'));
 }
