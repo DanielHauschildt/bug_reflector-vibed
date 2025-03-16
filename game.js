@@ -1,10 +1,12 @@
 // Game constants
-const GRAVITY = 0.15;
+const GRAVITY = 0.3; // Doubled from 0.15
 const BOUNCE_FACTOR = 0.8;
-const PLAYER_SPEED = 5;
-const BALL_VELOCITY_X = 1.5;
-const BALL_VELOCITY_Y = -8;
-const BOUNCE_POWER_INCREASE = 1.02;
+const PLAYER_SPEED = 10; // Doubled from 5
+const BALL_VELOCITY_X = 3.0; // Doubled from 1.5
+const BALL_VELOCITY_Y = -10; // Doubled from -8
+const BOUNCE_POWER_INCREASE = 1.04;
+const TARGET_FPS = 60; // Target frame rate for consistent gameplay across devices
+const TIME_STEP = 1000 / TARGET_FPS; // Time step in ms
 
 // Fixed game constants
 const CANVAS_WIDTH = 640;
@@ -50,6 +52,7 @@ let soundEnabled = true;
 
 // Game variables
 let canvas, ctx;
+let lastFrameTime = 0; // Track last frame time for delta calculation
 let player = {
     x: CANVAS_WIDTH / 2 - PLAYER_WIDTH / 2,
     y: CANVAS_HEIGHT - PLAYER_HEIGHT - GROUND_HEIGHT,
@@ -746,14 +749,27 @@ function startGameWithCharacter() {
 }
 
 // Game loop
-function gameLoop() {
+function gameLoop(timestamp) {
+    // Calculate time delta between frames
+    if (!lastFrameTime) lastFrameTime = timestamp;
+    const deltaTime = timestamp - lastFrameTime;
+    lastFrameTime = timestamp;
+    
+    // Calculate delta factor (1.0 means running at exactly TARGET_FPS)
+    // Clamp deltaFactor between 0.5 and 2.0 to prevent extreme speed changes
+    // This ensures the game never runs slower than half speed or faster than double speed
+    let deltaFactor = deltaTime / TIME_STEP;
+    
+    // Ensure a minimum deltaFactor (prevents extreme slowdowns)
+    deltaFactor = Math.max(0.5, Math.min(deltaFactor, 2.0));
+    
     // Always update and draw, but only update game logic if game is running and not paused
     if (gameRunning && !gamePaused) {
-        update();
+        update(deltaFactor);
     } else if (gameOver) {
         // For game over state, we still need to update animations
         // But particles are now updated directly in the update function
-        update(); // This will handle particles and any animation updates
+        update(deltaFactor); // This will handle particles and any animation updates
     }
     
     // Always draw the game (including game over and pause screens)
@@ -764,12 +780,12 @@ function gameLoop() {
 }
 
 // Update game state
-function update() {
+function update(deltaFactor = 1) {
     // Update hover effect for player
     player.hoverOffset = Math.sin(Date.now() * player.hoverSpeed) * player.hoverHeight;
     
     // Always update particles regardless of game state
-    updateParticles();
+    updateParticles(deltaFactor);
 
     // If game is not running, don't update anything except animations and particles
     if (!gameRunning) {
@@ -789,12 +805,12 @@ function update() {
         return;
     }
     
-    // Update player
+    // Update player with time delta
     if (player.isMovingLeft) {
-        player.x -= player.speed;
+        player.x -= player.speed * deltaFactor;
     }
     if (player.isMovingRight) {
-        player.x += player.speed;
+        player.x += player.speed * deltaFactor;
     }
     
     // Keep player within bounds
@@ -808,15 +824,15 @@ function update() {
     // Store previous position to calculate rotation
     const prevX = ball.x;
     
-    // Update ball position
-    ball.velocity.y += GRAVITY;
-    ball.x += ball.velocity.x;
-    ball.y += ball.velocity.y;
+    // Update ball position with time delta
+    ball.velocity.y += GRAVITY * deltaFactor;
+    ball.x += ball.velocity.x * deltaFactor;
+    ball.y += ball.velocity.y * deltaFactor;
     
     // Calculate physically correct rotation
     // For a ball rolling on a surface: rotation change = distance traveled / radius
     const distanceTraveled = ball.x - prevX;
-    ball.rotation -= distanceTraveled / ball.radius; // Minus for correct rotation direction
+    ball.rotation -= distanceTraveled / ball.radius;
     
     // Ball collision with walls
     if (ball.x - ball.radius < 0) {
@@ -826,6 +842,13 @@ function update() {
     } else if (ball.x + ball.radius > CANVAS_WIDTH) {
         ball.x = CANVAS_WIDTH - ball.radius;
         ball.velocity.x = -ball.velocity.x * BOUNCE_FACTOR;
+        playSound(wallBounceSound);
+    }
+    
+    // Ball collision with top bound
+    if (ball.y - ball.radius < 0) {
+        ball.y = ball.radius; // Prevent the ball from going outside the top boundary
+        ball.velocity.y = -ball.velocity.y * BOUNCE_FACTOR; // Reverse vertical velocity
         playSound(wallBounceSound);
     }
     
@@ -844,7 +867,7 @@ function update() {
         const hitPower = Math.sqrt(ball.velocity.x * ball.velocity.x + ball.velocity.y * ball.velocity.y);
         
         ball.velocity.x = Math.cos(hitAngle) * hitPower * 0.8;
-        ball.velocity.y = -Math.abs(ball.velocity.y) * BOUNCE_POWER_INCREASE;
+        ball.velocity.y = -Math.abs(ball.velocity.y) * BOUNCE_POWER_INCREASE - score * 0.05;
         
         // Play bounce sound
         playSound(bounceSound);
@@ -1130,6 +1153,9 @@ function startGame() {
         });
     }
 
+    // Reset time tracking for consistent game speed
+    lastFrameTime = 0;
+
     // Reset player properties instead of reassigning the whole object
     player.x = CANVAS_WIDTH / 2 - PLAYER_WIDTH / 2;
     player.y = CANVAS_HEIGHT - PLAYER_HEIGHT - GROUND_HEIGHT;
@@ -1177,6 +1203,7 @@ function startGame() {
     // Start the game loop and random chat
     if (!gameLoopRunning) {
         gameLoopRunning = true;
+        // Properly start the game loop with the timestamp parameter
         requestAnimationFrame(gameLoop);
     }
     
@@ -1926,7 +1953,7 @@ function createParticle() {
 }
 
 // Update particles
-function updateParticles() {
+function updateParticles(deltaFactor = 1) {
     // Generate new particles if we have fewer than the maximum
     if (particles.length < PARTICLE_COUNT && gameRunning) {
         particles.push(createParticle());
@@ -1937,14 +1964,14 @@ function updateParticles() {
         const particle = particles[i];
         
         // Move particle
-        particle.x += particle.vx;
-        particle.y += particle.vy;
+        particle.x += particle.vx * deltaFactor;
+        particle.y += particle.vy * deltaFactor;
         
         // Slightly increase vertical velocity (gravity acceleration)
-        particle.vy += 0.05;
+        particle.vy += 0.05 * deltaFactor;
         
         // Decrease lifetime
-        particle.lifetime--;
+        particle.lifetime -= deltaFactor;
         
         // Update alpha based on remaining lifetime
         particle.alpha = particle.lifetime / particle.maxLifetime;
