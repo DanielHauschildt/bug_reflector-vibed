@@ -34,6 +34,11 @@ let audioContext = null;
 let audioDestination = null;
 let soundSources = {};
 
+// Touch input variables
+let touchStartX = 0;
+let isTouching = false;
+let touchThreshold = 20; // Minimum distance to trigger movement
+
 // Character selection variables
 let characterList = [];
 let selectedCharacter = null;
@@ -139,6 +144,10 @@ window.onload = function() {
     canvas.width = CANVAS_WIDTH;
     canvas.height = CANVAS_HEIGHT;
     
+    // Handle window resizing for responsive canvas
+    handleCanvasResize();
+    window.addEventListener('resize', handleCanvasResize);
+    
     // Load high score from local storage
     const savedHighScore = localStorage.getItem('ikPlusHighScore');
     if (savedHighScore !== null) {
@@ -161,17 +170,29 @@ window.onload = function() {
     // Load ball image
     loadBallImage();
     
-    // Add event listeners
+    // Add keyboard event listeners
     document.addEventListener('keydown', handleKeyDown);
     document.addEventListener('keyup', handleKeyUp);
     document.getElementById('startButton').addEventListener('click', startGame);
     document.getElementById('startWithCharacterBtn').addEventListener('click', startGameWithCharacter);
     document.getElementById('changeCharacterBtn').addEventListener('click', showCharacterSelectScreen);
     
+    // Add sound toggle button handler
+    document.getElementById('soundToggleBtn').addEventListener('click', toggleSound);
+    
+    // Add touch event listeners
+    canvas.addEventListener('touchstart', handleTouchStart);
+    canvas.addEventListener('touchmove', handleTouchMove);
+    canvas.addEventListener('touchend', handleTouchEnd);
+    
+    // Add touch restart for game over
+    canvas.addEventListener('touchstart', handleTouchRestart);
+    
     // Add recording event listener
     document.getElementById('downloadRecordingBtn').addEventListener('click', downloadRecording);
     document.getElementById('toggleRecordingBtn').addEventListener('click', toggleRecording);
-
+    document.getElementById('fullscreenBtn').addEventListener('click', toggleFullscreen);
+    
     // Log SVG support for debugging
     console.log("SVG MIME type support:", document.implementation.hasFeature("http://www.w3.org/TR/SVG11/feature#Image", "1.1"));
     
@@ -187,12 +208,50 @@ window.onload = function() {
     }
 }
 
+// Adjust canvas display size based on screen size
+function handleCanvasResize() {
+    // Get the game area width
+    const gameArea = document.querySelector('.game-area');
+    const gameAreaWidth = gameArea ? gameArea.clientWidth : window.innerWidth;
+    
+    // Calculate optimal display size while maintaining aspect ratio
+    let displayWidth = Math.min(gameAreaWidth - 20, CANVAS_WIDTH); // 10px padding on each side
+    let displayHeight = (displayWidth / CANVAS_WIDTH) * CANVAS_HEIGHT;
+    
+    // Apply CSS for display size (actual rendering stays at original resolution)
+    canvas.style.width = `${displayWidth}px`;
+    canvas.style.height = `${displayHeight}px`;
+    
+    console.log(`Canvas display size adjusted to: ${displayWidth}x${displayHeight}`);
+}
+
 // Initialize sound effects
 function initializeSounds() {
     // Create a shared AudioContext for both gameplay and recording
     try {
         audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        console.log('Created shared AudioContext for gameplay and recording');
+        console.log('Created shared AudioContext for gameplay and recording, state:', audioContext.state);
+        
+        // AudioContext might start in suspended state due to browser autoplay policies
+        if (audioContext.state === 'suspended') {
+            console.warn('AudioContext suspended. Will resume on user interaction.');
+            
+            // Add event listeners to resume AudioContext on user interaction
+            const resumeAudioContext = () => {
+                if (audioContext.state === 'suspended') {
+                    audioContext.resume().then(() => {
+                        console.log('AudioContext resumed by user interaction');
+                    }).catch(err => {
+                        console.error('Failed to resume AudioContext:', err);
+                    });
+                }
+            };
+            
+            // Add multiple event listeners to increase chances of resuming
+            ['touchstart', 'touchend', 'mousedown', 'keydown', 'click'].forEach(event => {
+                document.addEventListener(event, resumeAudioContext, { once: true });
+            });
+        }
         
         // Create a destination for recording that we'll use later
         audioDestination = audioContext.createMediaStreamDestination();
@@ -283,18 +342,32 @@ function createFallbackSounds() {
 
 // Play a sound with error handling
 function playSound(sound) {
-    if (!soundEnabled) return;
+    if (!soundEnabled || !sound) return;
     
     try {
-        // Resume the AudioContext if it's suspended (needed for autoplay policies)
+        // Always try to resume the AudioContext first
         if (audioContext && audioContext.state === 'suspended') {
             audioContext.resume().then(() => {
-                console.log('AudioContext resumed successfully');
+                console.log('AudioContext resumed successfully while playing sound');
+                // After resuming, try playing again
+                playActualSound(sound);
             }).catch(err => {
                 console.warn('Failed to resume AudioContext:', err);
+                // Try direct playback as fallback
+                playActualSound(sound);
             });
+        } else {
+            // AudioContext is already running or not available, play directly
+            playActualSound(sound);
         }
-        
+    } catch (err) {
+        console.warn("Error playing sound:", err);
+    }
+}
+
+// Actual sound playing logic (extracted to avoid duplication)
+function playActualSound(sound) {
+    try {
         // Reset the sound to the beginning
         sound.currentTime = 0;
         
@@ -325,7 +398,7 @@ function playSound(sound) {
             });
         }
     } catch (err) {
-        console.warn("Error playing sound:", err);
+        console.warn("Error in playActualSound:", err);
     }
 }
 
@@ -337,6 +410,14 @@ function updateSoundStatus() {
         soundStatusElement.textContent = soundEnabled ? 'ON' : 'OFF';
         soundStatusElement.style.color = soundEnabled ? '#0f0' : '#f00';
     }
+    
+    // Update sound toggle button
+    const soundToggleBtn = document.getElementById('soundToggleBtn');
+    if (soundToggleBtn) {
+        soundToggleBtn.textContent = `Sound: ${soundEnabled ? 'ON' : 'OFF'}`;
+        soundToggleBtn.style.backgroundColor = soundEnabled ? '#047857' : '#888';
+    }
+    
     // The canvas display will automatically update in the next animation frame
 }
 
@@ -347,6 +428,29 @@ function toggleSound() {
     
     // Save sound preference to localStorage
     localStorage.setItem('ikPlusSoundEnabled', soundEnabled);
+    
+    // Try to play a test sound to unblock audio context
+    if (soundEnabled && bounceSound) {
+        try {
+            // Create a very quiet sound for testing
+            const testSound = bounceSound.cloneNode();
+            testSound.volume = 0.01;
+            testSound.play().catch(err => {
+                console.warn("Test sound failed, but that's okay:", err);
+            });
+            
+            // Also try to resume audio context
+            if (audioContext && audioContext.state === 'suspended') {
+                audioContext.resume().then(() => {
+                    console.log('AudioContext resumed by sound toggle');
+                }).catch(err => {
+                    console.error('Failed to resume AudioContext:', err);
+                });
+            }
+        } catch (err) {
+            console.warn("Test sound error:", err);
+        }
+    }
 }
 
 // Load character list from assets directory
@@ -917,6 +1021,7 @@ function drawFallbackBall() {
 
 // Handle keyboard input
 function handleKeyDown(e) {
+    // Move the player
     if (e.code === 'ArrowLeft' || e.key === 'A' || e.key === 'a') {
         player.isMovingLeft = true;
     }
@@ -932,6 +1037,15 @@ function handleKeyDown(e) {
     // Toggle sound with 'S' key
     if (e.key === 's' || e.key === 'S') {
         toggleSound();
+        
+        // Try to resume AudioContext on any key press (for sound)
+        if (audioContext && audioContext.state === 'suspended') {
+            audioContext.resume().then(() => {
+                console.log('AudioContext resumed by key press');
+            }).catch(err => {
+                console.error('Failed to resume AudioContext:', err);
+            });
+        }
     }
 }
 
@@ -949,6 +1063,15 @@ function startGame() {
     // Check if a character is selected
     if (!selectedCharacter || !characterImage.complete) {
         return;
+    }
+
+    // Resume AudioContext if suspended - browsers require user interaction
+    if (audioContext && audioContext.state === 'suspended') {
+        audioContext.resume().then(() => {
+            console.log('AudioContext resumed by game start');
+        }).catch(err => {
+            console.error('Failed to resume AudioContext:', err);
+        });
     }
 
     // Reset player properties instead of reassigning the whole object
@@ -983,8 +1106,10 @@ function startGame() {
     window.MIN_CHAT_INTERVAL = 1000;
     window.MAX_CHAT_INTERVAL = 4000;
 
-    // Play game start sound
-    playSound(gameStartSound);
+    // Play game start sound with a small delay to ensure AudioContext is resumed
+    setTimeout(() => {
+        playSound(gameStartSound);
+    }, 50);
 
     // Trigger a welcome supernova
     triggerSupernova(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, 500, 0.3);
@@ -1804,9 +1929,17 @@ function startContinuousRecording() {
     const canvas = document.getElementById('gameCanvas');
     
     try {
-        // Get the stream from the canvas
-        const canvasStream = canvas.captureStream(30); // 30 FPS
-        console.log('Canvas stream created with tracks:', canvasStream.getTracks().length);
+        // Try to create canvas stream - this might fail if canvas is not origin-clean
+        let canvasStream;
+        
+        try {
+            canvasStream = canvas.captureStream(30); // 30 FPS
+            console.log('Canvas stream created with tracks:', canvasStream.getTracks().length);
+        } catch (err) {
+            console.error('Canvas captureStream failed:', err);
+            showNotification('Cannot record: Canvas security restriction. Try playing in a local server environment.', 'error');
+            return;
+        }
         
         // Optimize video track for better quality and less artifacts
         canvasStream.getVideoTracks().forEach(track => {
@@ -2001,6 +2134,17 @@ function startContinuousRecording() {
     } catch (err) {
         console.error('Error starting recording:', err);
         showNotification('Could not start recording: ' + err.message, 'error');
+        
+        // Reset recording state on error
+        isRecording = false;
+        autoRecordingEnabled = false;
+        
+        // Update UI to reflect disabled state
+        const toggleRecordingBtn = document.getElementById('toggleRecordingBtn');
+        if (toggleRecordingBtn) {
+            toggleRecordingBtn.textContent = 'Enable Recording';
+            toggleRecordingBtn.classList.remove('recording');
+        }
     }
 }
 
@@ -2255,4 +2399,128 @@ function toggleRecording() {
         document.getElementById('toggleRecordingBtn').textContent = 'Enable Recording';
         document.getElementById('toggleRecordingBtn').classList.remove('recording');
     }
+}
+
+// Handle touch start
+function handleTouchStart(e) {
+    e.preventDefault(); // Prevent scrolling when touching the canvas
+    
+    // Try to resume AudioContext on touch (for sound on mobile)
+    if (audioContext && audioContext.state === 'suspended') {
+        audioContext.resume().then(() => {
+            console.log('AudioContext resumed by touch');
+        }).catch(err => {
+            console.error('Failed to resume AudioContext:', err);
+        });
+    }
+    
+    const touch = e.touches[0];
+    // Convert touch position to canvas coordinates
+    const canvasRect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / canvasRect.width;
+    touchStartX = (touch.clientX - canvasRect.left) * scaleX;
+    
+    isTouching = true;
+}
+
+// Handle touch move
+function handleTouchMove(e) {
+    if (!isTouching) return;
+    e.preventDefault();
+    
+    const touch = e.touches[0];
+    // Convert touch position to canvas coordinates
+    const canvasRect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / canvasRect.width;
+    const touchCurrentX = (touch.clientX - canvasRect.left) * scaleX;
+    const touchDeltaX = touchCurrentX - touchStartX;
+    
+    // Reset player movement first
+    player.isMovingLeft = false;
+    player.isMovingRight = false;
+    
+    // Determine direction based on touch delta
+    if (touchDeltaX < -touchThreshold) {
+        // Moving left
+        player.isMovingLeft = true;
+    } else if (touchDeltaX > touchThreshold) {
+        // Moving right
+        player.isMovingRight = true;
+    }
+    
+    // Update touch start position for continuous movement
+    if (Math.abs(touchDeltaX) > touchThreshold * 2) {
+        touchStartX = touchCurrentX;
+    }
+}
+
+// Handle touch end
+function handleTouchEnd(e) {
+    e.preventDefault();
+    isTouching = false;
+    player.isMovingLeft = false;
+    player.isMovingRight = false;
+}
+
+// Handle touch restart for game over
+function handleTouchRestart(e) {
+    // Only handle restart touch when game is over
+    if (gameOver) {
+        e.preventDefault(); // Prevent default touch behavior
+        
+        // Try to resume AudioContext on touch restart (for sound on mobile)
+        if (audioContext && audioContext.state === 'suspended') {
+            audioContext.resume().then(() => {
+                console.log('AudioContext resumed by touch restart');
+            }).catch(err => {
+                console.error('Failed to resume AudioContext:', err);
+            });
+        }
+        
+        startGameWithCharacter();
+    }
+}
+
+// Toggle fullscreen mode
+function toggleFullscreen() {
+    const gameContainer = document.querySelector('.game-container');
+    
+    if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+        // Enter fullscreen
+        if (gameContainer.requestFullscreen) {
+            gameContainer.requestFullscreen().catch(err => {
+                console.warn(`Error attempting to enable fullscreen mode: ${err.message}`);
+            });
+        } else if (gameContainer.webkitRequestFullscreen) { // Safari
+            gameContainer.webkitRequestFullscreen();
+        }
+        document.getElementById('fullscreenBtn').textContent = 'Exit Fullscreen';
+    } else {
+        // Exit fullscreen
+        if (document.exitFullscreen) {
+            document.exitFullscreen();
+        } else if (document.webkitExitFullscreen) { // Safari
+            document.webkitExitFullscreen();
+        }
+        document.getElementById('fullscreenBtn').textContent = 'Fullscreen';
+    }
+    
+    // Update canvas size after fullscreen change
+    setTimeout(handleCanvasResize, 100);
+}
+
+// Listen for fullscreen changes
+document.addEventListener('fullscreenchange', handleFullscreenChange);
+document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+
+// Handle fullscreen change
+function handleFullscreenChange() {
+    const fullscreenBtn = document.getElementById('fullscreenBtn');
+    if (document.fullscreenElement || document.webkitFullscreenElement) {
+        fullscreenBtn.textContent = 'Exit Fullscreen';
+    } else {
+        fullscreenBtn.textContent = 'Fullscreen';
+    }
+    // Update canvas size
+    handleCanvasResize();
 }

@@ -434,4 +434,67 @@ canvas {
     background-color: #ef4444;
     border-radius: 50%;
     animation: pulse 1.5s infinite;
+}
+
+/* Additional mobile and touch device optimizations */
+@media (max-width: 768px) {
+    .game-container {
+        flex-direction: column;
+        width: 100%;
+        max-width: 100%;
+        height: auto;
+        padding: 0;
+    }
+    
+    .game-area {
+        width: 100%;
+        margin-bottom: 10px;
+    }
+    
+    #gameCanvas {
+        width: 100%;
+        max-width: 480px;
+        height: auto;
+        touch-action: none; /* Disable browser handling of touch gestures */
+    }
+    
+    .chat-container {
+        width: 100%;
+        max-width: 100%;
+        max-height: 200px;
+    }
+    
+    .start-button, 
+    .change-character-button,
+    .recording-button {
+        padding: 12px 24px; /* Larger touch targets */
+        margin: 8px;
+        font-size: 16px;
+    }
+    
+    .character-grid {
+        grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
+    }
+    
+    .character-item {
+        width: 70px;
+        height: 70px;
+    }
+    
+    .instructions p {
+        font-size: 12px;
+        margin: 4px 0;
+    }
+}
+
+/* Touch feedback for buttons */
+button:active {
+    transform: scale(0.95);
+    transition: transform 0.1s;
+}
+
+/* Prevent text selection on touch */
+.game-container {
+    user-select: none;
+    -webkit-user-select: none;
 } 
