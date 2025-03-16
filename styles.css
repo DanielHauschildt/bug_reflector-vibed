@@ -497,4 +497,52 @@ button:active {
 .game-container {
     user-select: none;
     -webkit-user-select: none;
+}
+
+/* Fullscreen specific styles */
+.fullscreen-hidden {
+    display: none !important;
+}
+
+.fullscreen-floating {
+    position: fixed !important;
+    right: 20px !important;
+    top: 20px !important;
+    z-index: 1000 !important;
+    background-color: rgba(0, 0, 0, 0.5) !important;
+    border: 2px solid white !important;
+    padding: 10px !important;
+    border-radius: 5px !important;
+    color: white !important;
+    font-weight: bold !important;
+    cursor: pointer !important;
+    transition: background-color 0.3s !important;
+}
+
+.fullscreen-floating:hover {
+    background-color: rgba(50, 50, 50, 0.7) !important;
+}
+
+/* When in fullscreen mode, give the game canvas more importance */
+:fullscreen .game-area {
+    width: 100% !important;
+    height: 100% !important;
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+    background-color: black !important;
+}
+
+:-webkit-full-screen .game-area {
+    width: 100% !important;
+    height: 100% !important;
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+    background-color: black !important;
+}
+
+:fullscreen #gameCanvas,
+:-webkit-full-screen #gameCanvas {
+    box-shadow: 0 0 30px rgba(255, 165, 0, 0.3) !important;
 } 

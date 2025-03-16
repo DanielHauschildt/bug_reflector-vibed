@@ -210,17 +210,57 @@ window.onload = function() {
 
 // Adjust canvas display size based on screen size
 function handleCanvasResize() {
-    // Get the game area width
+    // Get container dimensions
     const gameArea = document.querySelector('.game-area');
-    const gameAreaWidth = gameArea ? gameArea.clientWidth : window.innerWidth;
+    const container = document.fullscreenElement || document.webkitFullscreenElement || gameArea;
+    
+    // Get available width and height
+    let availableWidth, availableHeight;
+    
+    if (document.fullscreenElement || document.webkitFullscreenElement) {
+        // In fullscreen mode, use the entire screen
+        availableWidth = window.innerWidth;
+        availableHeight = window.innerHeight;
+    } else {
+        // In windowed mode, use the container's width and height
+        availableWidth = container ? container.clientWidth : window.innerWidth;
+        availableHeight = container ? container.clientHeight : window.innerHeight;
+        
+        // Subtract padding in windowed mode
+        availableWidth -= 20; // 10px padding on each side
+    }
     
     // Calculate optimal display size while maintaining aspect ratio
-    let displayWidth = Math.min(gameAreaWidth - 20, CANVAS_WIDTH); // 10px padding on each side
-    let displayHeight = (displayWidth / CANVAS_WIDTH) * CANVAS_HEIGHT;
+    const canvasRatio = CANVAS_WIDTH / CANVAS_HEIGHT;
+    let displayWidth, displayHeight;
+    
+    // Check if fitting to width or height would be better
+    if (availableWidth / availableHeight > canvasRatio) {
+        // Available space is wider than needed, fit to height
+        displayHeight = availableHeight;
+        displayWidth = displayHeight * canvasRatio;
+    } else {
+        // Available space is taller than needed, fit to width
+        displayWidth = availableWidth;
+        displayHeight = displayWidth / canvasRatio;
+    }
     
     // Apply CSS for display size (actual rendering stays at original resolution)
+    const canvas = document.getElementById('gameCanvas');
     canvas.style.width = `${displayWidth}px`;
     canvas.style.height = `${displayHeight}px`;
+    
+    // Center the canvas in fullscreen mode
+    if (document.fullscreenElement || document.webkitFullscreenElement) {
+        canvas.style.position = 'absolute';
+        canvas.style.left = `${(availableWidth - displayWidth) / 2}px`;
+        canvas.style.top = `${(availableHeight - displayHeight) / 2}px`;
+    } else {
+        // Reset positioning in windowed mode
+        canvas.style.position = '';
+        canvas.style.left = '';
+        canvas.style.top = '';
+    }
     
     console.log(`Canvas display size adjusted to: ${displayWidth}x${displayHeight}`);
 }
@@ -2501,6 +2541,10 @@ function handleTouchRestart(e) {
 // Toggle fullscreen mode
 function toggleFullscreen() {
     const gameContainer = document.querySelector('.game-container');
+    const gameCanvas = document.getElementById('gameCanvas');
+    const fullscreenBtn = document.getElementById('fullscreenBtn');
+    const controlsElements = document.querySelectorAll('.game-area > *:not(#gameCanvas)');
+    const chatContainer = document.querySelector('.chat-container');
     
     if (!document.fullscreenElement && !document.webkitFullscreenElement) {
         // Enter fullscreen
@@ -2511,7 +2555,24 @@ function toggleFullscreen() {
         } else if (gameContainer.webkitRequestFullscreen) { // Safari
             gameContainer.webkitRequestFullscreen();
         }
-        document.getElementById('fullscreenBtn').textContent = 'Exit Fullscreen';
+        
+        // Hide all UI elements except canvas and fullscreen button
+        controlsElements.forEach(element => {
+            if (element !== fullscreenBtn && !element.contains(fullscreenBtn)) {
+                element.classList.add('fullscreen-hidden');
+            }
+        });
+        
+        // Hide chat container
+        if (chatContainer) {
+            chatContainer.classList.add('fullscreen-hidden');
+        }
+        
+        // Reposition fullscreen button over canvas
+        fullscreenBtn.classList.add('fullscreen-floating');
+        
+        // Update button text
+        fullscreenBtn.textContent = 'Exit Fullscreen';
     } else {
         // Exit fullscreen
         if (document.exitFullscreen) {
@@ -2519,7 +2580,22 @@ function toggleFullscreen() {
         } else if (document.webkitExitFullscreen) { // Safari
             document.webkitExitFullscreen();
         }
-        document.getElementById('fullscreenBtn').textContent = 'Fullscreen';
+        
+        // Show all UI elements again
+        controlsElements.forEach(element => {
+            element.classList.remove('fullscreen-hidden');
+        });
+        
+        // Show chat container
+        if (chatContainer) {
+            chatContainer.classList.remove('fullscreen-hidden');
+        }
+        
+        // Return fullscreen button to normal position
+        fullscreenBtn.classList.remove('fullscreen-floating');
+        
+        // Update button text
+        fullscreenBtn.textContent = 'Fullscreen';
     }
     
     // Update canvas size after fullscreen change
@@ -2533,11 +2609,45 @@ document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
 // Handle fullscreen change
 function handleFullscreenChange() {
     const fullscreenBtn = document.getElementById('fullscreenBtn');
+    const controlsElements = document.querySelectorAll('.game-area > *:not(#gameCanvas)');
+    const chatContainer = document.querySelector('.chat-container');
+    
     if (document.fullscreenElement || document.webkitFullscreenElement) {
+        // Entered fullscreen
         fullscreenBtn.textContent = 'Exit Fullscreen';
+        
+        // Hide all UI elements except canvas and fullscreen button
+        controlsElements.forEach(element => {
+            if (element !== fullscreenBtn && !element.contains(fullscreenBtn)) {
+                element.classList.add('fullscreen-hidden');
+            }
+        });
+        
+        // Hide chat container
+        if (chatContainer) {
+            chatContainer.classList.add('fullscreen-hidden');
+        }
+        
+        // Reposition fullscreen button over canvas
+        fullscreenBtn.classList.add('fullscreen-floating');
     } else {
+        // Exited fullscreen
         fullscreenBtn.textContent = 'Fullscreen';
+        
+        // Show all UI elements again
+        controlsElements.forEach(element => {
+            element.classList.remove('fullscreen-hidden');
+        });
+        
+        // Show chat container
+        if (chatContainer) {
+            chatContainer.classList.remove('fullscreen-hidden');
+        }
+        
+        // Return fullscreen button to normal position
+        fullscreenBtn.classList.remove('fullscreen-floating');
     }
+    
     // Update canvas size
     handleCanvasResize();
 }
